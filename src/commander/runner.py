@@ -1,0 +1,38 @@
+import asyncio
+
+from commander.backends.base import JobBackend
+from commander.queues.base import JobQueue
+
+
+class TasksRunner:
+    def __init__(
+        self,
+        queue: JobQueue,
+        backend: JobBackend | None = None,
+        parallel_tasks: int = 4,
+    ) -> None:
+        if parallel_tasks < 1:
+            raise ValueError("parallel_tasks must be at least 1")
+
+        self.parallel_tasks = parallel_tasks
+        self._queue = queue
+        self._backend = backend
+
+    async def run(self) -> None:
+        if self._backend:
+            await self._backend.ensure_setup()
+
+        if self.parallel_tasks < 1:
+            raise ValueError("parallel_tasks must be at least 1")
+
+        async with asyncio.TaskGroup() as task_group:
+            for _ in range(self.parallel_tasks):
+                task_group.create_task(self._consume())
+
+    async def _consume(self) -> None:
+        while True:
+            task_payload = await self._queue.get()
+            print(f"Running {task_payload}")
+            result = await task_payload.fn(*task_payload.args, **task_payload.kwargs)
+            if self._backend:
+                await self._backend.set_result(task_payload.id, result)
