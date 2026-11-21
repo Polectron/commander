@@ -1,15 +1,15 @@
 import asyncio
 
 from commander.queues.base import JobQueue
-from commander.tasks.task import TaskPayload
+from commander.tasks.task import QueuedTask
 
 
 class MemoryQueue(JobQueue):
     def __init__(self) -> None:
-        self._queue = asyncio.Queue()
+        self._queue: asyncio.Queue[QueuedTask] = asyncio.Queue()
 
-    async def put(self, payload: TaskPayload):
-        await self._queue.put(payload)
+    async def put(self, task: QueuedTask):
+        await self._queue.put(task)
 
-    async def get(self) -> TaskPayload:
+    async def get(self) -> QueuedTask:
         return await self._queue.get()

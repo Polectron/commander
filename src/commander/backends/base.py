@@ -4,17 +4,18 @@ import abc
 import uuid
 from typing import TYPE_CHECKING
 
+from commander.tasks.task import ScheduledTask
+
 if TYPE_CHECKING:
     from commander.tasks.task import TaskPayload, TaskResult
 
 
 class JobBackend(abc.ABC):
-
     async def ensure_setup(self):
         pass
 
     @abc.abstractmethod
-    async def save(self, payload: TaskPayload):
+    async def save(self, task_id: uuid.UUID, payload: TaskPayload):
         raise NotImplementedError
 
     @abc.abstractmethod
@@ -26,9 +27,11 @@ class JobBackend(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def schedule_task(self, payload: TaskPayload, when: int):
+    async def schedule_task(
+        self, schedule_id: uuid.UUID, payload: TaskPayload, when: int
+    ):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def get_scheduled_tasks(self) -> list[TaskPayload]:
+    async def get_scheduled_tasks(self) -> list[ScheduledTask]:
         raise NotImplementedError

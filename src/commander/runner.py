@@ -19,9 +19,6 @@ class TasksRunner:
         self._backend = backend
 
     async def run(self) -> None:
-        if self._backend:
-            await self._backend.ensure_setup()
-
         if self.parallel_tasks < 1:
             raise ValueError("parallel_tasks must be at least 1")
 
@@ -31,8 +28,14 @@ class TasksRunner:
 
     async def _consume(self) -> None:
         while True:
-            task_payload = await self._queue.get()
-            print(f"Running {task_payload}")
-            result = await task_payload.fn(*task_payload.args, **task_payload.kwargs)
-            if self._backend:
-                await self._backend.set_result(task_payload.id, result)
+            task = await self._queue.get()
+            print(f"Running {task}")
+            try:
+                result = await task.payload.fn(
+                    *task.payload.args, **task.payload.kwargs
+                )
+                print(f"Finished {task}")
+                if self._backend:
+                    await self._backend.set_result(task.id, result)
+            except Exception as e:  # noqa: BLE001
+                print(f"Task {task.id} failed with {e!r}")

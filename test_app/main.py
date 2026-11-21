@@ -3,13 +3,13 @@ import time
 from contextlib import suppress
 
 from commander import Commander
-from commander.backends.memory import MemoryBackend
+from commander.backends.sql import SqlBackend
 from commander.baton import Baton
 from commander.queues.memory import MemoryQueue
 from commander.runner import TasksRunner
 
 job_queue = MemoryQueue()
-backend = MemoryBackend()
+backend = SqlBackend()
 
 commander = Commander(job_queue, backend)
 runner = TasksRunner(job_queue, backend)
@@ -23,6 +23,7 @@ async def sleep(t: int):
 
 
 async def main():
+    await backend.ensure_setup()
     runner_task = asyncio.create_task(runner.run())
     baton_task = asyncio.create_task(baton.run())
     try:
@@ -46,7 +47,7 @@ async def main():
         # tasks can also be scheduled to run on a later time
         await sleep.schedule(5, when=int(time.time()) + 5)
 
-        await asyncio.sleep(10)
+        await asyncio.sleep(60)
     finally:
         runner_task.cancel()
         baton_task.cancel()
