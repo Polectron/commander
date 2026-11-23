@@ -7,16 +7,20 @@
 	"workspaceFolder": "/workspaces/commander",
 	"containerEnv": {
 		"VIRTUAL_ENV": "${containerWorkspaceFolder}/.venv",
-		"UV_LINK_MODE": "copy"
+		"UV_LINK_MODE": "copy",
+		"VALKEY_HOST": "valkey"
 	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
 	"features": {
-		"ghcr.io/devcontainer-community/devcontainer-features/astral.sh-uv:1": {}
+		"ghcr.io/devcontainer-community/devcontainer-features/astral.sh-uv:1": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:4": {
+			"moby": false
+		}
 	},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
-	"forwardPorts": [5432, 5672, 6379, 15672],
+	// "forwardPorts": [5432, 5672, 6379, 15672],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
 	// "postCreateCommand": "pip3 install --user -r requirements.txt",
