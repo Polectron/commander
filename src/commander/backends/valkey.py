@@ -1,12 +1,14 @@
 import json
 import os
-import time
 from uuid import UUID
 
 import valkey.asyncio as valkey
+from pydantic import TypeAdapter
 
 from commander.backends.base import JobBackend
 from commander.tasks.task import (
+    OnceSchedule,
+    Schedule,
     ScheduledTask,
     TaskPayload,
     TaskState,
@@ -15,6 +17,8 @@ from commander.tasks.task import (
 
 
 class ValkeyBackend(JobBackend):
+    SCHEDULE_ADAPTER = TypeAdapter(Schedule)
+
     def __init__(self):
         self._connection = valkey.Valkey(
             host=os.getenv("VALKEY_HOST", "valkey"), port=6379, db=0
@@ -82,42 +86,37 @@ class ValkeyBackend(JobBackend):
             error=json.loads(data["error"]),
         )
 
-    async def schedule_task(self, schedule_id: UUID, payload: TaskPayload, when: int):
+    async def schedule_task(
+        self,
+        schedule_id: UUID,
+        payload: TaskPayload,
+        schedule: Schedule | int,
+        next_run: int | None = None,
+    ):
+        if isinstance(schedule, int):
+            next_run = next_run if next_run is not None else schedule
+            schedule = OnceSchedule(run_at=next_run)
         async with self._connection.pipeline(transaction=True) as pipeline:
-            pipeline.zadd("commander:schedule", {str(schedule_id): when})
+            pipeline.zadd("commander:schedule", {str(schedule_id): next_run})
             pipeline.hset(
                 f"commander:schedule:{schedule_id}",
                 mapping={
                     "payload": payload.model_dump_json(),
-                    "when": str(when),
+                    "schedule": schedule.model_dump_json(),
+                    "next_run": str(next_run),
+                    "last_run": "null",
                 },
             )
             await pipeline.execute()
 
-    async def get_scheduled_tasks(self) -> list[ScheduledTask]:
-        ids = await self._connection.zrangebyscore(
-            "commander:schedule", "-inf", int(time.time())
-        )
-        if not ids:
-            return []
-
+    async def get_schedules(self) -> list[ScheduledTask]:
+        ids = await self._connection.zrange("commander:schedule", 0, -1)
         tasks: list[ScheduledTask] = []
-        async with self._connection.pipeline(transaction=True) as pipeline:
-            for schedule_id in ids:
-                raw_id = (
-                    schedule_id.decode()
-                    if isinstance(schedule_id, bytes)
-                    else schedule_id
-                )
-                pipeline.hgetall(f"commander:schedule:{raw_id}")
-                pipeline.zrem("commander:schedule", schedule_id)
-            responses = await pipeline.execute()
-
-        for index, schedule_id in enumerate(ids):
+        for schedule_id in ids:
             raw_id = (
                 schedule_id.decode() if isinstance(schedule_id, bytes) else schedule_id
             )
-            scheduled = responses[index * 2]
+            scheduled = await self._connection.hgetall(f"commander:schedule:{raw_id}")
             if not scheduled:
                 continue
             scheduled = {
@@ -126,12 +125,37 @@ class ValkeyBackend(JobBackend):
                 else value
                 for key, value in scheduled.items()
             }
+            last_run = json.loads(scheduled["last_run"])
             tasks.append(
                 ScheduledTask(
                     id=UUID(raw_id),
                     payload=TaskPayload.model_validate_json(scheduled["payload"]),
-                    when=int(scheduled["when"]),
+                    schedule=self.SCHEDULE_ADAPTER.validate_json(scheduled["schedule"]),
+                    next_run=int(scheduled["next_run"]),
+                    last_run=last_run,
                 )
             )
-            await self._connection.delete(f"commander:schedule:{raw_id}")
         return tasks
+
+    async def update_schedule(self, task: ScheduledTask) -> None:
+        async with self._connection.pipeline(transaction=True) as pipeline:
+            pipeline.zadd(
+                "commander:schedule",
+                {str(task.id): task.next_run},
+            )
+            pipeline.hset(
+                f"commander:schedule:{task.id}",
+                mapping={
+                    "payload": task.payload.model_dump_json(),
+                    "schedule": task.schedule.model_dump_json(),
+                    "next_run": str(task.next_run),
+                    "last_run": json.dumps(task.last_run),
+                },
+            )
+            await pipeline.execute()
+
+    async def delete_schedule(self, schedule_id: UUID) -> None:
+        async with self._connection.pipeline(transaction=True) as pipeline:
+            pipeline.zrem("commander:schedule", str(schedule_id))
+            pipeline.delete(f"commander:schedule:{schedule_id}")
+            await pipeline.execute()

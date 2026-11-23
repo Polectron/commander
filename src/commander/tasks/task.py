@@ -5,8 +5,9 @@ import functools
 import time
 import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, ImportString
 
@@ -29,6 +30,31 @@ class TaskStatus(StrEnum):
     FAILED = "failed"
 
 
+class OnceSchedule(BaseModel):
+    kind: Literal["once"] = "once"
+    run_at: int
+
+
+class IntervalSchedule(BaseModel):
+    kind: Literal["interval"] = "interval"
+    seconds: float
+
+
+class CronSchedule(BaseModel):
+    kind: Literal["cron"] = "cron"
+    expression: str
+
+    @staticmethod
+    def next_run(expression: str, after: int) -> int:
+        from croniter import croniter
+
+        point = datetime.fromtimestamp(after, tz=UTC)
+        try:
+            return int(croniter(expression, point).get_next(datetime).timestamp())
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid cron expression: {expression}") from exc
+
+
 class QueuedTask(BaseModel):
     id: uuid.UUID
     payload: TaskPayload
@@ -37,7 +63,12 @@ class QueuedTask(BaseModel):
 class ScheduledTask(BaseModel):
     id: uuid.UUID
     payload: TaskPayload
-    when: int
+    schedule: OnceSchedule | IntervalSchedule | CronSchedule
+    next_run: int
+    last_run: int | None = None
+
+
+Schedule = OnceSchedule | IntervalSchedule | CronSchedule
 
 
 class TaskState(BaseModel):
@@ -50,7 +81,6 @@ class TaskState(BaseModel):
     @property
     def finished(self) -> bool:
         return self.status in (TaskStatus.FINISHED, TaskStatus.FAILED)
-
 
 
 class TaskHandler:
@@ -105,12 +135,53 @@ class Task:
     async def __call__(self, *args, **kwargs):
         return await self._fn(*args, **kwargs)
 
-    async def schedule(self, *args, when: int, **kwargs):
+    async def schedule(
+        self,
+        *args,
+        at: datetime | int | None = None,
+        when: int | None = None,
+        every: timedelta | None = None,
+        cron: str | None = None,
+        **kwargs,
+    ) -> None:
         if self._commander.backend is None:
             raise ValueError("No commander is set up, can't schedule task")
+
+        options = sum(option is not None for option in (at, when, every, cron))
+        if options != 1:
+            raise ValueError("Schedule exactly one of at, when, every, or cron")
+
         schedule_id = uuid.uuid4()
         payload = TaskPayload(fn=self._fn, args=args, kwargs=kwargs)
-        await self._commander.backend.schedule_task(schedule_id, payload, when)
+        now = int(datetime.now(UTC).timestamp())
+
+        if at is not None:
+            if isinstance(at, datetime):
+                if at.tzinfo is None:
+                    at = at.replace(tzinfo=UTC)
+                next_run = int(at.timestamp())
+            else:
+                next_run = at
+            schedule: Schedule = OnceSchedule(run_at=next_run)
+        elif when is not None:
+            next_run = when
+            schedule = OnceSchedule(run_at=when)
+        elif every is not None:
+            if every.total_seconds() <= 0:
+                raise ValueError("Schedule interval must be greater than zero")
+            next_run = now + int(every.total_seconds())
+            schedule = IntervalSchedule(seconds=every.total_seconds())
+        else:
+            schedule = CronSchedule(expression=cron or "")
+            next_run = CronSchedule.next_run(cron or "", now)
+
+        await self._commander.backend.schedule_task(
+            schedule_id,
+            payload,
+            schedule,
+            next_run,
+        )
+        await self._commander.queue.notify_refresh()
 
     async def queue(self, *args, **kwargs) -> TaskHandler:
         payload = TaskPayload(fn=self._fn, args=args, kwargs=kwargs)

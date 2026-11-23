@@ -1,8 +1,14 @@
-import time
 import uuid
 
 from commander.backends.base import JobBackend
-from commander.tasks.task import ScheduledTask, TaskPayload, TaskState, TaskStatus
+from commander.tasks.task import (
+    OnceSchedule,
+    Schedule,
+    ScheduledTask,
+    TaskPayload,
+    TaskState,
+    TaskStatus,
+)
 
 
 class MemoryBackend(JobBackend):
@@ -42,16 +48,34 @@ class MemoryBackend(JobBackend):
         return self._tasks.get(task_id)
 
     async def schedule_task(
-        self, schedule_id: uuid.UUID, payload: TaskPayload, when: int
+        self,
+        schedule_id: uuid.UUID,
+        payload: TaskPayload,
+        schedule: Schedule | int,
+        next_run: int | None = None,
     ):
+        if isinstance(schedule, int):
+            next_run = next_run if next_run is not None else schedule
+            schedule = OnceSchedule(run_at=next_run)
         self._scheduled_tasks.append(
-            ScheduledTask(id=schedule_id, payload=payload, when=when)
+            ScheduledTask(
+                id=schedule_id,
+                payload=payload,
+                schedule=schedule,
+                next_run=next_run,
+            )
         )
 
-    async def get_scheduled_tasks(self) -> list[ScheduledTask]:
-        now = int(time.time())
-        tasks = [task for task in self._scheduled_tasks if now >= task.when]
+    async def get_schedules(self) -> list[ScheduledTask]:
+        return list(self._scheduled_tasks)
+
+    async def update_schedule(self, task: ScheduledTask) -> None:
+        for index, scheduled in enumerate(self._scheduled_tasks):
+            if scheduled.id == task.id:
+                self._scheduled_tasks[index] = task
+                return
+
+    async def delete_schedule(self, schedule_id: uuid.UUID) -> None:
         self._scheduled_tasks = [
-            task for task in self._scheduled_tasks if now < task.when
+            task for task in self._scheduled_tasks if task.id != schedule_id
         ]
-        return tasks
