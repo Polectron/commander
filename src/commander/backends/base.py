@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 from commander.tasks.task import ScheduledTask
 
 if TYPE_CHECKING:
-    from commander.tasks.task import TaskPayload, TaskResult
+    from commander.tasks.task import TaskPayload, TaskState
 
 
 class JobBackend(abc.ABC):
@@ -19,11 +19,19 @@ class JobBackend(abc.ABC):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def set_result(self, task_id: uuid.UUID, result):
+    async def set_running(self, task_id: uuid.UUID):
         raise NotImplementedError
 
     @abc.abstractmethod
-    async def get(self, task_id: uuid.UUID) -> TaskResult | None:
+    async def set_finished(self, task_id: uuid.UUID, result):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def set_failed(self, task_id: uuid.UUID, error: str):
+        raise NotImplementedError
+
+    @abc.abstractmethod
+    async def get(self, task_id: uuid.UUID) -> TaskState | None:
         raise NotImplementedError
 
     @abc.abstractmethod

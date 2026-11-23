@@ -7,7 +7,7 @@ import aiosqlite
 from pypika import Column, Field, Query
 
 from commander.backends.base import JobBackend
-from commander.tasks.task import ScheduledTask, TaskPayload, TaskResult
+from commander.tasks.task import ScheduledTask, TaskPayload, TaskState, TaskStatus
 
 
 class SqlBackend(JobBackend):
@@ -26,8 +26,9 @@ class SqlBackend(JobBackend):
                 .columns(
                     Column("id", "uuid", nullable=False),
                     Column("payload", "text", nullable=False),
-                    Column("finished", "boolean", nullable=False),
+                    Column("status", "text", nullable=False),
                     Column("result", "text", nullable=True),
+                    Column("error", "text", nullable=True),
                 )
                 .primary_key("id")
                 .get_sql()
@@ -59,18 +60,24 @@ class SqlBackend(JobBackend):
         async with self._lock, self._connect() as db:
             query = (
                 Query.into("tasks")
-                .insert(task_id, json.dumps(serialized_payload), False, None)
+                .insert(
+                    task_id,
+                    json.dumps(serialized_payload),
+                    TaskStatus.PENDING,
+                    None,
+                    None,
+                )
                 .get_sql()
             )
             await db.execute(query)
             await db.commit()
 
-    async def get(self, task_id: uuid.UUID) -> TaskResult | None:
+    async def get(self, task_id: uuid.UUID) -> TaskState | None:
         async with self._lock, self._connect() as db:
             db.row_factory = aiosqlite.Row
             query = (
                 Query.from_("tasks")
-                .select("id", "payload", "finished", "result")
+                .select("id", "payload", "status", "result", "error")
                 .where(Field("id") == str(task_id))
                 .get_sql()
             )
@@ -78,21 +85,48 @@ class SqlBackend(JobBackend):
             row = await cursor.fetchone()
             if row is not None:
                 payload = TaskPayload.model_validate_json(row["payload"])
-                return TaskResult(
+                return TaskState(
                     id=uuid.UUID(row["id"]),
                     payload=payload,
-                    finished=bool(row["finished"]),
+                    status=TaskStatus(row["status"]),
                     result=(
                         json.loads(row["result"]) if row["result"] is not None else None
                     ),
+                    error=row["error"],
                 )
 
-    async def set_result(self, task_id: uuid.UUID, result):
+    async def set_running(self, task_id: uuid.UUID):
+        async with self._lock, self._connect() as db:
+            cursor = await db.execute(
+                "UPDATE tasks SET status = ? WHERE id = ?",
+                (TaskStatus.RUNNING, str(task_id)),
+            )
+            if cursor.rowcount != 1:
+                raise ValueError(f"Task {task_id} was not found")
+            await db.commit()
+
+    async def set_finished(self, task_id: uuid.UUID, result):
         async with self._lock, self._connect() as db:
             query = (
                 Query.update("tasks")
-                .set("finished", True)
+                .set("status", TaskStatus.FINISHED)
                 .set("result", json.dumps(result))
+                .set("error", None)
+                .where(Field("id") == str(task_id))
+                .get_sql()
+            )
+            cursor = await db.execute(query)
+            if cursor.rowcount != 1:
+                raise ValueError(f"Task {task_id} was not found")
+            await db.commit()
+
+    async def set_failed(self, task_id: uuid.UUID, error: str):
+        async with self._lock, self._connect() as db:
+            query = (
+                Query.update("tasks")
+                .set("status", TaskStatus.FAILED)
+                .set("result", None)
+                .set("error", error)
                 .where(Field("id") == str(task_id))
                 .get_sql()
             )

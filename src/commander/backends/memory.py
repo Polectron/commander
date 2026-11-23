@@ -2,25 +2,43 @@ import time
 import uuid
 
 from commander.backends.base import JobBackend
-from commander.tasks.task import ScheduledTask, TaskPayload, TaskResult
+from commander.tasks.task import ScheduledTask, TaskPayload, TaskState, TaskStatus
 
 
 class MemoryBackend(JobBackend):
     def __init__(self) -> None:
         super().__init__()
-        self._tasks: dict[uuid.UUID, TaskResult] = {}
+        self._tasks: dict[uuid.UUID, TaskState] = {}
         self._scheduled_tasks: list[ScheduledTask] = []
 
     async def save(self, task_id: uuid.UUID, payload: TaskPayload):
-        self._tasks[task_id] = TaskResult(
-            id=task_id, payload=payload, finished=False, result=None
+        self._tasks[task_id] = TaskState(
+            id=task_id, payload=payload, status=TaskStatus.PENDING
         )
 
-    async def set_result(self, task_id: uuid.UUID, result):
-        self._tasks[task_id].finished = True
-        self._tasks[task_id].result = result
+    async def set_running(self, task_id: uuid.UUID):
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} was not found")
+        task.status = TaskStatus.RUNNING
 
-    async def get(self, task_id: uuid.UUID) -> TaskResult | None:
+    async def set_finished(self, task_id: uuid.UUID, result):
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} was not found")
+        task.status = TaskStatus.FINISHED
+        task.result = result
+        task.error = None
+
+    async def set_failed(self, task_id: uuid.UUID, error: str):
+        task = self._tasks.get(task_id)
+        if task is None:
+            raise ValueError(f"Task {task_id} was not found")
+        task.status = TaskStatus.FAILED
+        task.result = None
+        task.error = error
+
+    async def get(self, task_id: uuid.UUID) -> TaskState | None:
         return self._tasks.get(task_id)
 
     async def schedule_task(

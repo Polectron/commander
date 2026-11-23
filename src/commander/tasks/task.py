@@ -5,6 +5,7 @@ import functools
 import time
 import uuid
 from collections.abc import Callable
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ImportString
@@ -21,6 +22,13 @@ class TaskPayload(BaseModel):
     kwargs: dict
 
 
+class TaskStatus(StrEnum):
+    PENDING = "pending"
+    RUNNING = "running"
+    FINISHED = "finished"
+    FAILED = "failed"
+
+
 class QueuedTask(BaseModel):
     id: uuid.UUID
     payload: TaskPayload
@@ -32,11 +40,17 @@ class ScheduledTask(BaseModel):
     when: int
 
 
-class TaskResult(BaseModel):
+class TaskState(BaseModel):
     id: uuid.UUID
     payload: TaskPayload
-    finished: bool
-    result: Any
+    status: TaskStatus = TaskStatus.PENDING
+    result: Any = None
+    error: str | None = None
+
+    @property
+    def finished(self) -> bool:
+        return self.status in (TaskStatus.FINISHED, TaskStatus.FAILED)
+
 
 
 class TaskHandler:
@@ -63,6 +77,8 @@ class TaskHandler:
                     f"Task {self.task_id} was not found when waiting for it"
                 )
             if task.finished:
+                if task.status == TaskStatus.FAILED:
+                    raise RuntimeError(task.error or f"Task {self.task_id} failed")
                 return task.result
             await asyncio.sleep(0.1)
             if timeout and time.monotonic() - start_time > timeout:

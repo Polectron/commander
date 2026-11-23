@@ -31,11 +31,15 @@ class TasksRunner:
             task = await self._queue.get()
             print(f"Running {task}")
             try:
+                if self._backend:
+                    await self._backend.set_running(task.id)
                 result = await task.payload.fn(
                     *task.payload.args, **task.payload.kwargs
                 )
                 print(f"Finished {task}")
                 if self._backend:
-                    await self._backend.set_result(task.id, result)
+                    await self._backend.set_finished(task.id, result)
             except Exception as e:  # noqa: BLE001
                 print(f"Task {task.id} failed with {e!r}")
+                if self._backend:
+                    await self._backend.set_failed(task.id, repr(e))
