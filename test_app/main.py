@@ -4,12 +4,13 @@ from contextlib import suppress
 
 from commander import Commander
 from commander.backends.sql import SqlBackend
+from commander.backends.valkey import ValkeyBackend
 from commander.baton import Baton
 from commander.queues.memory import MemoryQueue
 from commander.runner import TasksRunner
 
 job_queue = MemoryQueue()
-backend = SqlBackend()
+backend = ValkeyBackend()
 
 commander = Commander(job_queue, backend)
 runner = TasksRunner(job_queue, backend)

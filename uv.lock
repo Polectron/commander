@@ -37,6 +37,7 @@ dependencies = [
     { name = "aiosqlite" },
     { name = "pydantic" },
     { name = "pypika" },
+    { name = "valkey", extra = ["libvalkey"] },
 ]
 
 [package.dev-dependencies]
@@ -50,6 +51,7 @@ requires-dist = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
     { name = "pydantic", specifier = ">=2.14.4" },
     { name = "pypika", specifier = ">=0.51.1" },
+    { name = "valkey", extras = ["libvalkey"], specifier = ">=6.2.0" },
 ]
 
 [package.metadata.requires-dev]
@@ -65,6 +67,28 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/01/e1/2069291243c926a2ff1cd706c7f3eeb9b62144bf60f77c9fb9ff2fb26bd3/iniconfig-2.3.1.tar.gz", hash = "sha256:67f4b9c50da0dedf52af349e7749a80a9057a5031199791b906c3bb3ae878960", size = 21209, upload-time = "2026-10-06T22:48:38.076Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/43/4ca9e49d27a1fcf6bece6f6aec0ea46bb9112489b93d4b688fb415457bdb/iniconfig-2.3.1-py3-none-any.whl", hash = "sha256:9121e2c1fdb355232495be3194c8dfe87ccc2d5dee45947b78e68f499790d7a7", size = 7552, upload-time = "2026-10-06T22:48:36.959Z" },
+]
+
+[[package]]
+name = "libvalkey"
+version = "4.2.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/a6/f1/c92c54b8570b51c2f388b7e041f242d6dfccb956e7bb02af8297ae62f73e/libvalkey-4.2.1.tar.gz", hash = "sha256:7f0ffb6dfa9c01cde7f398d8bab93d2566597cbad17f4068d019bb5cf335bd47", size = 176258, upload-time = "2026-10-12T08:57:18.473Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9a/c8/881c6b2987e34a07aa5f7ed9788c6c500d9e4119503eb95d7e8729c5e9b4/libvalkey-4.2.1-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:00c7feb1722cfc29106cd211267ffc755e5fb3866a6fe8a2d4db65e8eb36c5c5", size = 69877, upload-time = "2026-10-12T08:56:43.38Z" },
+    { url = "https://files.pythonhosted.org/packages/b7/dc/c8f00e5e5e822ddfe0f40fd779f9abb5c905b2d98617d2f5d6215e7e40f2/libvalkey-4.2.1-cp315-cp315-macosx_11_0_universal2.whl", hash = "sha256:0ae7bf565bba356dc54ad91ee223198185799884a688de5deee0d611c7343d28", size = 136543, upload-time = "2026-10-12T08:56:45.082Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/0f/477c567486b3d62ec3e1e60b291775615faa0cd6eb38499c88f7b7b4fc84/libvalkey-4.2.1-cp315-cp315-macosx_11_0_x86_64.whl", hash = "sha256:3f6484eaf045eba40402542d2fc3edf1b39471a670195504817e161e1c6601ec", size = 72698, upload-time = "2026-10-12T08:56:46.424Z" },
+    { url = "https://files.pythonhosted.org/packages/98/60/21737d8c3656b92cac44dc4bbd823a16fe3e0497f8fae63f040d9f9113bd/libvalkey-4.2.1-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:53b6da77a6172b2d3cbda444aa5960118e7ece3cd56f8c43d109bb71634d2c50", size = 274378, upload-time = "2026-10-12T08:56:47.825Z" },
+    { url = "https://files.pythonhosted.org/packages/b6/94/8f51c3a392faa1268d2c99e11f3fa8fe2a951b8f81bc7721009111227f10/libvalkey-4.2.1-cp315-cp315-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:7fa0197e86b5cb1ac60dbe1c911fd5a0204597ba0ca6083d3f93b4bcdd2f37b2", size = 294244, upload-time = "2026-10-12T08:56:49.37Z" },
+    { url = "https://files.pythonhosted.org/packages/2d/4e/4d58b4c049420bdd1722ffef874088579735658dc01b154484d016de7a71/libvalkey-4.2.1-cp315-cp315-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:ccacdc2eead32fa6c273de23c83c8451636d2b26bf9b58acd09742525757a813", size = 299543, upload-time = "2026-10-12T08:56:50.943Z" },
+    { url = "https://files.pythonhosted.org/packages/40/bc/c8c64ff0ddd88651ef36f77eec62b1a1ffecadcf5de2011dbc996d8f90e5/libvalkey-4.2.1-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:54103238af94c649ea7b4a2bd1659ae55d526aa6d7cc61bd88329d6c84d42f47", size = 275164, upload-time = "2026-10-12T08:56:52.377Z" },
+    { url = "https://files.pythonhosted.org/packages/fa/71/2718bbf6ee715c8ff917f210a7028cd2dc76b483460ca5a21f0cff90f55e/libvalkey-4.2.1-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:2537b682f5f2a57229735d6f3c74d035037bd46312a5df5a69e5bceb1e91ce65", size = 267159, upload-time = "2026-10-12T08:56:53.949Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/6e/f893b593aeeac1fa202eea2ebe319f3854773766337c3ba9f521668555a5/libvalkey-4.2.1-cp315-cp315-musllinux_1_2_ppc64le.whl", hash = "sha256:8c26711dbaa19be2b206099d164585719ae188a1f652085cbcff22350c9cf5cd", size = 287446, upload-time = "2026-10-12T08:56:55.455Z" },
+    { url = "https://files.pythonhosted.org/packages/c6/8b/9994f77ef665e31140d6cd6246a99a914365d125df70aeb788746ea2103e/libvalkey-4.2.1-cp315-cp315-musllinux_1_2_s390x.whl", hash = "sha256:e83f22209df8169fca370de603f67d03f4b97548198f22ce18a9b1103406f7a7", size = 285062, upload-time = "2026-10-12T08:56:57.02Z" },
+    { url = "https://files.pythonhosted.org/packages/84/b3/d06b997324a34e9a19c9a002042b73c53f82a1adb34f230901ec6615554c/libvalkey-4.2.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:9da02dcdc3b9b0b54ae0b88140c192cd1495100790ace46696b17cd38fa24a8a", size = 270560, upload-time = "2026-10-12T08:56:58.742Z" },
+    { url = "https://files.pythonhosted.org/packages/58/8f/16351f8e133ad25a87ef4da91aeb710ab7f44f54eac162669cb1c3bcc8bd/libvalkey-4.2.1-cp315-cp315-win32.whl", hash = "sha256:1e61906f27bb9d83b2c476cb9e25d7453a0e17d190c870f7a76bcbb14c4b466b", size = 58631, upload-time = "2026-10-12T08:57:00.18Z" },
+    { url = "https://files.pythonhosted.org/packages/5b/d1/966d72ded453865befca10b89b4c57e3765231ae12bf4bda6e35b836de7b/libvalkey-4.2.1-cp315-cp315-win_amd64.whl", hash = "sha256:89859009fcb22593dac7cc2ae238e4a6d45e81ee5bbd3f4cd2a9765e7e54c41f", size = 62899, upload-time = "2026-10-12T08:57:01.588Z" },
+    { url = "https://files.pythonhosted.org/packages/06/b2/a46ea58dc8c391e15b461c0f72a6ea2d8704fd2810f5a94bdaa82c2dd245/libvalkey-4.2.1-cp315-cp315-win_arm64.whl", hash = "sha256:d1028f87e361ebaea5f4fb5dcd414afc9f70f7b67526a70c530be655712f0e12", size = 61563, upload-time = "2026-10-12T08:57:02.857Z" },
 ]
 
 [[package]]
@@ -219,4 +243,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ff/50/0195198eb1d75bab716bb0a813abea4cc394bfa17a92a189f021a34859af/typing_inspection-0.4.5.tar.gz", hash = "sha256:7f16c411e7930dc79596d42ab44672a3fe5f60eb34b781a1647e7872363120c7", size = 81194, upload-time = "2026-11-04T14:13:23.774Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/de/0c/ea2544850a7c135e15033a5c7a8e7211136184b7ae63e2239d557c2b3019/typing_inspection-0.4.5-py3-none-any.whl", hash = "sha256:bc210535442b39e1bf2805e0c7a17dfd6a4ace760c84c7f7d16245d23a6b1c39", size = 14874, upload-time = "2026-11-04T14:13:22.616Z" },
+]
+
+[[package]]
+name = "valkey"
+version = "6.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/c7/38b3ae24672abcc19e668858c4c8c4f7b7d0dda06973f46d755190452fdc/valkey-6.2.0.tar.gz", hash = "sha256:7337c493ce55d7fe58ab44c93c37f56552dad75f9512e97c5808374ab5af4939", size = 4596658, upload-time = "2026-10-12T10:24:28.403Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/10/84312ccb0d328702e27f2e79c18aa84004482dd1737dc58d2b352d7289e2/valkey-6.2.0-py3-none-any.whl", hash = "sha256:94a12c87cd070e356b2c89e2946fa582d9f65ec2e003ab1867e987220e2beae8", size = 261233, upload-time = "2026-10-12T10:24:26.871Z" },
+]
+
+[package.optional-dependencies]
+libvalkey = [
+    { name = "libvalkey" },
 ]
