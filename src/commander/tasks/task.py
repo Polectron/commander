@@ -116,10 +116,15 @@ class TaskHandler:
 
 
 async def queue_task(
-    queue: JobQueue, backend: JobBackend | None, payload: TaskPayload
+    queue: JobQueue,
+    backend: JobBackend | None,
+    payload: TaskPayload,
 ) -> TaskHandler:
     task_id = uuid.uuid4()
-    task = QueuedTask(id=task_id, payload=payload)
+    task = QueuedTask(
+        id=task_id,
+        payload=payload,
+    )
     if backend:
         await backend.save(task_id, payload)
     await queue.put(task)

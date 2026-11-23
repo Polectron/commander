@@ -54,7 +54,6 @@ class SqlBackend(JobBackend):
                 .primary_key("id")
                 .get_sql()
             )
-
             async with self._connect() as db:
                 await db.execute("PRAGMA journal_mode = WAL")
                 await db.execute("PRAGMA busy_timeout = 30000")
@@ -159,6 +158,13 @@ class SqlBackend(JobBackend):
         async with self._lock, self._connect() as db:
             schedule_query = (
                 Query.into("schedule")
+                .columns(
+                    "id",
+                    "payload",
+                    "schedule",
+                    "next_run",
+                    "last_run",
+                )
                 .insert(
                     schedule_id,
                     json.dumps(serialized_payload),

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import abc
 import asyncio
 from typing import TYPE_CHECKING
@@ -13,9 +15,9 @@ class JobQueue(abc.ABC):
     async def get(self) -> QueuedTask:
         raise NotImplementedError
 
-    async def notify_refresh(self) -> None:
+    async def ack(self, task: QueuedTask) -> None:
         pass
 
-    async def wait_for_refresh(self, timeout: float) -> bool:
-        await asyncio.sleep(timeout)
-        return False
+    async def nack(self, task: QueuedTask, requeue: bool = True) -> None:
+        if requeue:
+            await self.put(task)

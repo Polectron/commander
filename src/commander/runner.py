@@ -39,7 +39,9 @@ class TasksRunner:
                 print(f"Finished {task}")
                 if self._backend:
                     await self._backend.set_finished(task.id, result)
+                await self._queue.ack(task)
             except Exception as e:  # noqa: BLE001
                 print(f"Task {task.id} failed with {e!r}")
                 if self._backend:
                     await self._backend.set_failed(task.id, repr(e))
+                await self._queue.nack(task, requeue=False)

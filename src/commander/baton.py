@@ -16,15 +16,10 @@ class Baton:
         self,
         queue: JobQueue,
         backend: JobBackend,
-        tick_interval: float = 1,
-        refresh_interval: float = 30,
     ) -> None:
         self._backend = backend
         self._queue = queue
-        self._tick_interval = tick_interval
-        self._refresh_interval = refresh_interval
         self._schedules: dict[str, ScheduledTask] = {}
-        self._last_refresh = 0.0
 
     def _advance(self, task: ScheduledTask, now: int) -> ScheduledTask | None:
         if isinstance(task.schedule, OnceSchedule):
@@ -42,7 +37,6 @@ class Baton:
     async def refresh(self) -> None:
         schedules = await self._backend.get_schedules()
         self._schedules = {str(task.id): task for task in schedules}
-        self._last_refresh = time.monotonic()
 
     async def run(self):
         await self.refresh()
@@ -52,7 +46,16 @@ class Baton:
                 task for task in self._schedules.values() if task.next_run <= now
             ]
             for task in pending_tasks:
-                await queue_task(self._queue, self._backend, task.payload)
+                try:
+                    await queue_task(
+                        self._queue,
+                        self._backend,
+                        task.payload,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    print(f"Could not enqueue scheduled task {task.id}: {exc!r}")
+                    continue
+
                 advanced = self._advance(task, now)
                 if advanced is None:
                     await self._backend.delete_schedule(task.id)
@@ -61,10 +64,3 @@ class Baton:
                     await self._backend.update_schedule(advanced)
                     self._schedules[str(task.id)] = advanced
 
-            refresh_due = (
-                time.monotonic() - self._last_refresh >= self._refresh_interval
-            )
-            refreshed = await self._queue.wait_for_refresh(self._tick_interval)
-            if refreshed or refresh_due:
-                await self.refresh()
-                continue
