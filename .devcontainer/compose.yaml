@@ -1,0 +1,35 @@
+services:
+  devcontainer:
+    image: mcr.microsoft.com/devcontainers/python:3-3.15-trixie
+    volumes:
+      - ..:/workspaces/commander:cached
+    command: sleep infinity
+    depends_on:
+      - postgres
+      - rabbitmq
+      - valkey
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: commander
+      POSTGRES_USER: commander
+      POSTGRES_PASSWORD: commander
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+  valkey:
+    image: valkey/valkey:8-alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  postgres-data:
