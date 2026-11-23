@@ -5,9 +5,15 @@
 	"dockerComposeFile": "compose.yaml",
 	"service": "devcontainer",
 	"workspaceFolder": "/workspaces/commander",
+	"containerEnv": {
+		"VIRTUAL_ENV": "${containerWorkspaceFolder}/.venv",
+		"UV_LINK_MODE": "copy"
+	},
 
 	// Features to add to the dev container. More info: https://containers.dev/features.
-	// "features": {},
+	"features": {
+		"ghcr.io/devcontainer-community/devcontainer-features/astral.sh-uv:1": {}
+	},
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
 	"forwardPorts": [5432, 5672, 6379, 15672],
