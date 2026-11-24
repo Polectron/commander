@@ -12,20 +12,20 @@ from commander.tasks.task import QueuedTask
 
 
 class RabbitMQQueue(JobQueue):
+    QUEUE_NAME = "commander"
+
     def __init__(
         self,
-        url: str | None = None,
-        queue_name: str = "commander",
+        url: str,
         prefetch_count: int = 1,
     ) -> None:
-        if not queue_name:
-            raise ValueError("queue_name must not be empty")
         if prefetch_count < 1:
             raise ValueError("prefetch_count must be at least 1")
 
-        self.url = url or os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost/")
-        self.queue_name = queue_name
+        self.url = url
         self.prefetch_count = prefetch_count
+        self.channel_options = {"on_return_raises": True}
+        self.queue_options = {"durable": True}
 
         self._connection: aio_pika.RobustConnection | None = None
         self._channel: aio_pika.RobustChannel | None = None
@@ -40,16 +40,17 @@ class RabbitMQQueue(JobQueue):
     async def _initialize(self, consume: bool = False) -> None:
         async with self._initialize_lock:
             if self._connection is None:
-                self._connection = await aio_pika.connect_robust(self.url)
+                self._connection = await aio_pika.connect_robust(
+                    self.url,
+                )
             if self._channel is None:
-                self._channel = await self._connection.channel(on_return_raises=True)
+                self._channel = await self._connection.channel(**self.channel_options)
             if not self._qos_configured:
                 await self._channel.set_qos(prefetch_count=self.prefetch_count)
                 self._qos_configured = True
             if self._queue is None:
                 self._queue = await self._channel.declare_queue(
-                    self.queue_name,
-                    durable=True,
+                    self.QUEUE_NAME,
                 )
             if consume and self._iterator is None:
                 iterator = self._queue.iterator()
@@ -65,7 +66,7 @@ class RabbitMQQueue(JobQueue):
                 body=task.model_dump_json().encode(),
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=self.queue_name,
+            routing_key=self.QUEUE_NAME,
             mandatory=True,
         )
 

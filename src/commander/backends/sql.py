@@ -1,10 +1,24 @@
-import asyncio
+from __future__ import annotations
+
 import json
 import uuid
+from typing import Any, Self
 
-import aiosqlite
 from pydantic import TypeAdapter
-from pypika import Column, Field, Query
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    delete,
+    insert,
+    select,
+    update,
+)
+from sqlalchemy.engine import make_url
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from commander.backends.base import JobBackend
 from commander.tasks.task import (
@@ -16,133 +30,110 @@ from commander.tasks.task import (
     TaskStatus,
 )
 
+_METADATA = MetaData()
+
+_TASKS = Table(
+    "tasks",
+    _METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("payload", Text, nullable=False),
+    Column("status", String, nullable=False),
+    Column("result", Text),
+    Column("error", Text),
+)
+
+_SCHEDULES = Table(
+    "schedule",
+    _METADATA,
+    Column("id", String(36), primary_key=True),
+    Column("payload", Text, nullable=False),
+    Column("schedule", Text, nullable=False),
+    Column("next_run", Integer, nullable=False),
+    Column("last_run", Integer),
+)
+
 
 class SqlBackend(JobBackend):
-    DATABASE_PATH = "commander.db"
-    DATABASE_TIMEOUT = 30
     SCHEDULE_ADAPTER = TypeAdapter(Schedule)
 
-    def __init__(self) -> None:
+    def __init__(self, database_url: str) -> None:
         super().__init__()
-        self._lock = asyncio.Lock()
 
-    async def ensure_setup(self):
-        async with self._lock:
-            tasks_query = (
-                Query.create_table("tasks")
-                .if_not_exists()
-                .columns(
-                    Column("id", "uuid", nullable=False),
-                    Column("payload", "text", nullable=False),
-                    Column("status", "text", nullable=False),
-                    Column("result", "text", nullable=True),
-                    Column("error", "text", nullable=True),
-                )
-                .primary_key("id")
-                .get_sql()
-            )
-            schedule_query = (
-                Query.create_table("schedule")
-                .if_not_exists()
-                .columns(
-                    Column("id", "uuid", nullable=False),
-                    Column("payload", "text", nullable=False),
-                    Column("schedule", "text", nullable=False),
-                    Column("next_run", "int", nullable=False),
-                    Column("last_run", "int", nullable=True),
-                )
-                .primary_key("id")
-                .get_sql()
-            )
-            async with self._connect() as db:
-                await db.execute("PRAGMA journal_mode = WAL")
-                await db.execute("PRAGMA busy_timeout = 30000")
-                await db.execute(tasks_query)
-                await db.execute(schedule_query)
-                await db.commit()
+        url = make_url(database_url)
+        engine = create_async_engine(
+            url,
+        )
+        self._engine = engine
 
-    def _connect(self) -> aiosqlite.Connection:
-        return aiosqlite.connect(self.DATABASE_PATH, timeout=self.DATABASE_TIMEOUT)
+    async def ensure_setup(self) -> None:
+        async with self._engine.begin() as connection:
+            await connection.run_sync(_METADATA.create_all)
 
-    async def save(self, task_id: uuid.UUID, payload: TaskPayload):
-        serialized_payload = payload.model_dump(mode="json", exclude={"id"})
-        async with self._lock, self._connect() as db:
-            query = (
-                Query.into("tasks")
-                .insert(
-                    task_id,
-                    json.dumps(serialized_payload),
-                    TaskStatus.PENDING,
-                    None,
-                    None,
+    async def save(self, task_id: uuid.UUID, payload: TaskPayload) -> None:
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(_TASKS).values(
+                    id=str(task_id),
+                    payload=payload.model_dump_json(),
+                    status=TaskStatus.PENDING,
+                    result=None,
+                    error=None,
                 )
-                .get_sql()
             )
-            await db.execute(query)
-            await db.commit()
 
     async def get(self, task_id: uuid.UUID) -> TaskState | None:
-        async with self._lock, self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            query = (
-                Query.from_("tasks")
-                .select("id", "payload", "status", "result", "error")
-                .where(Field("id") == str(task_id))
-                .get_sql()
+        async with self._engine.connect() as connection:
+            result = await connection.execute(
+                select(_TASKS).where(_TASKS.c.id == str(task_id))
             )
-            cursor = await db.execute(query)
-            row = await cursor.fetchone()
-            if row is not None:
-                payload = TaskPayload.model_validate_json(row["payload"])
-                return TaskState(
-                    id=uuid.UUID(row["id"]),
-                    payload=payload,
-                    status=TaskStatus(row["status"]),
-                    result=(
-                        json.loads(row["result"]) if row["result"] is not None else None
-                    ),
-                    error=row["error"],
+            row = result.mappings().one_or_none()
+            if row is None:
+                return None
+
+            return TaskState(
+                id=uuid.UUID(row["id"]),
+                payload=TaskPayload.model_validate_json(row["payload"]),
+                status=TaskStatus(row["status"]),
+                result=json.loads(row["result"]) if row["result"] is not None else None,
+                error=row["error"],
+            )
+
+    async def set_running(self, task_id: uuid.UUID) -> None:
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(_TASKS)
+                .where(_TASKS.c.id == str(task_id))
+                .values(status=TaskStatus.RUNNING)
+            )
+            await self._ensure_updated(
+                connection, result.rowcount, _TASKS, task_id, "Task"
+            )
+
+    async def set_finished(self, task_id: uuid.UUID, result: Any) -> None:
+        async with self._engine.begin() as connection:
+            update_result = await connection.execute(
+                update(_TASKS)
+                .where(_TASKS.c.id == str(task_id))
+                .values(
+                    status=TaskStatus.FINISHED,
+                    result=json.dumps(result),
+                    error=None,
                 )
-
-    async def set_running(self, task_id: uuid.UUID):
-        async with self._lock, self._connect() as db:
-            cursor = await db.execute(
-                "UPDATE tasks SET status = ? WHERE id = ?",
-                (TaskStatus.RUNNING, str(task_id)),
             )
-            if cursor.rowcount != 1:
-                raise ValueError(f"Task {task_id} was not found")
-            await db.commit()
-
-    async def set_finished(self, task_id: uuid.UUID, result):
-        async with self._lock, self._connect() as db:
-            query = (
-                Query.update("tasks")
-                .set("status", TaskStatus.FINISHED)
-                .set("result", json.dumps(result))
-                .set("error", None)
-                .where(Field("id") == str(task_id))
-                .get_sql()
+            await self._ensure_updated(
+                connection, update_result.rowcount, _TASKS, task_id, "Task"
             )
-            cursor = await db.execute(query)
-            if cursor.rowcount != 1:
-                raise ValueError(f"Task {task_id} was not found")
-            await db.commit()
 
-    async def set_failed(self, task_id: uuid.UUID, error: str):
-        async with self._lock, self._connect() as db:
-            query = (
-                Query.update("tasks")
-                .set("status", TaskStatus.FAILED)
-                .set("result", None)
-                .set("error", error)
-                .where(Field("id") == str(task_id))
-                .get_sql()
+    async def set_failed(self, task_id: uuid.UUID, error: str) -> None:
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(_TASKS)
+                .where(_TASKS.c.id == str(task_id))
+                .values(status=TaskStatus.FAILED, result=None, error=error)
             )
-            cursor = await db.execute(query)
-            if cursor.rowcount != 1:
-                raise ValueError(f"Task {task_id} was not found")
-            await db.commit()
+            await self._ensure_updated(
+                connection, result.rowcount, _TASKS, task_id, "Task"
+            )
 
     async def schedule_task(
         self,
@@ -150,41 +141,25 @@ class SqlBackend(JobBackend):
         payload: TaskPayload,
         schedule: Schedule | int,
         next_run: int | None = None,
-    ):
+    ) -> None:
         if isinstance(schedule, int):
             next_run = next_run if next_run is not None else schedule
             schedule = OnceSchedule(run_at=next_run)
-        serialized_payload = payload.model_dump(mode="json", exclude={"id"})
-        async with self._lock, self._connect() as db:
-            schedule_query = (
-                Query.into("schedule")
-                .columns(
-                    "id",
-                    "payload",
-                    "schedule",
-                    "next_run",
-                    "last_run",
+
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                insert(_SCHEDULES).values(
+                    id=str(schedule_id),
+                    payload=payload.model_dump_json(),
+                    schedule=schedule.model_dump_json(),
+                    next_run=next_run,
+                    last_run=None,
                 )
-                .insert(
-                    schedule_id,
-                    json.dumps(serialized_payload),
-                    schedule.model_dump_json(),
-                    next_run,
-                    None,
-                )
-                .get_sql()
             )
-            await db.execute(schedule_query)
-            await db.commit()
 
     async def get_schedules(self) -> list[ScheduledTask]:
-        async with self._lock, self._connect() as db:
-            db.row_factory = aiosqlite.Row
-            cursor = await db.execute(
-                'SELECT "id", "payload", "schedule", "next_run", "last_run" '
-                "FROM schedule"
-            )
-            rows = await cursor.fetchall()
+        async with self._engine.connect() as connection:
+            result = await connection.execute(select(_SCHEDULES))
             return [
                 ScheduledTask(
                     id=uuid.UUID(row["id"]),
@@ -193,31 +168,52 @@ class SqlBackend(JobBackend):
                     next_run=row["next_run"],
                     last_run=row["last_run"],
                 )
-                for row in rows
+                for row in result.mappings()
             ]
 
     async def update_schedule(self, task: ScheduledTask) -> None:
-        async with self._lock, self._connect() as db:
-            cursor = await db.execute(
-                "UPDATE schedule "
-                "SET payload = ?, schedule = ?, next_run = ?, last_run = ? "
-                "WHERE id = ?",
-                (
-                    task.payload.model_dump_json(),
-                    task.schedule.model_dump_json(),
-                    task.next_run,
-                    task.last_run,
-                    str(task.id),
-                ),
+        async with self._engine.begin() as connection:
+            result = await connection.execute(
+                update(_SCHEDULES)
+                .where(_SCHEDULES.c.id == str(task.id))
+                .values(
+                    payload=task.payload.model_dump_json(),
+                    schedule=task.schedule.model_dump_json(),
+                    next_run=task.next_run,
+                    last_run=task.last_run,
+                )
             )
-            if cursor.rowcount != 1:
-                raise ValueError(f"Schedule {task.id} was not found")
-            await db.commit()
+            await self._ensure_updated(
+                connection, result.rowcount, _SCHEDULES, task.id, "Schedule"
+            )
+
+    @staticmethod
+    async def _ensure_updated(
+        connection: AsyncConnection,
+        rowcount: int | None,
+        table: Table,
+        row_id: uuid.UUID,
+        resource_name: str,
+    ) -> None:
+        if rowcount == 1:
+            return
+        existing_id = await connection.scalar(
+            select(table.c.id).where(table.c.id == str(row_id))
+        )
+        if existing_id is None:
+            raise ValueError(f"{resource_name} {row_id} was not found")
 
     async def delete_schedule(self, schedule_id: uuid.UUID) -> None:
-        async with self._lock, self._connect() as db:
-            await db.execute(
-                "DELETE FROM schedule WHERE id = ?",
-                (str(schedule_id),),
+        async with self._engine.begin() as connection:
+            await connection.execute(
+                delete(_SCHEDULES).where(_SCHEDULES.c.id == str(schedule_id))
             )
-            await db.commit()
+
+    async def close(self) -> None:
+        await self._engine.dispose()
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.close()

@@ -186,7 +186,6 @@ class Task:
             schedule,
             next_run,
         )
-        await self._commander.queue.notify_refresh()
 
     async def queue(self, *args, **kwargs) -> TaskHandler:
         payload = TaskPayload(fn=self._fn, args=args, kwargs=kwargs)

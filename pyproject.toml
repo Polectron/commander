@@ -12,9 +12,13 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "croniter>=6.0.0",
     "pydantic>=2.14.4",
-    "pypika>=0.51.1",
+    "sqlalchemy[asyncio]>=2.0.0",
     "valkey[libvalkey]>=6.2.0",
 ]
+
+[project.optional-dependencies]
+mysql = ["asyncmy>=0.2.10"]
+postgres = ["asyncpg>=0.30.0"]
 
 [project.scripts]
 commander = "commander:main"

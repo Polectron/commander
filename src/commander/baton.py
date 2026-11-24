@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 from commander.backends.base import JobBackend
@@ -63,4 +64,5 @@ class Baton:
                 else:
                     await self._backend.update_schedule(advanced)
                     self._schedules[str(task.id)] = advanced
+            await asyncio.sleep(0.1)
 

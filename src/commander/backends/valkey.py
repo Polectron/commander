@@ -1,5 +1,7 @@
 import json
 import os
+from collections.abc import Mapping
+from typing import Any, Self
 from uuid import UUID
 
 import valkey.asyncio as valkey
@@ -18,15 +20,25 @@ from commander.tasks.task import (
 
 class ValkeyBackend(JobBackend):
     SCHEDULE_ADAPTER = TypeAdapter(Schedule)
+    KEY_PREFIX = "commander"
 
-    def __init__(self):
-        self._connection = valkey.Valkey(
-            host=os.getenv("VALKEY_HOST", "valkey"), port=6379, db=0
+    def __init__(
+        self,
+        url: str,
+    ) -> None:
+
+        self.url = url
+        client = valkey.Valkey.from_url(
+            self.url,
         )
+        self._connection = client
+
+    def _key(self, *parts: str) -> str:
+        return ":".join((self.KEY_PREFIX, *parts))
 
     async def save(self, task_id: UUID, payload: TaskPayload):
         await self._connection.hset(
-            f"commander:task:{task_id}",
+            self._key("task", str(task_id)),
             mapping={
                 "payload": payload.model_dump_json(),
                 "status": TaskStatus.PENDING,
@@ -36,13 +48,13 @@ class ValkeyBackend(JobBackend):
         )  # pyright: ignore[reportGeneralTypeIssues]
 
     async def set_running(self, task_id: UUID):
-        key = f"commander:task:{task_id}"
+        key = self._key("task", str(task_id))
         if not await self._connection.exists(key):
             raise ValueError(f"Task {task_id} was not found")
         await self._connection.hset(key, "status", TaskStatus.RUNNING)  # pyright: ignore[reportGeneralTypeIssues]
 
     async def set_finished(self, task_id: UUID, result):
-        key = f"commander:task:{task_id}"
+        key = self._key("task", str(task_id))
         if not await self._connection.exists(key):
             raise ValueError(f"Task {task_id} was not found")
         await self._connection.hset(
@@ -55,7 +67,7 @@ class ValkeyBackend(JobBackend):
         )  # pyright: ignore[reportGeneralTypeIssues]
 
     async def set_failed(self, task_id: UUID, error: str):
-        key = f"commander:task:{task_id}"
+        key = self._key("task", str(task_id))
         if not await self._connection.exists(key):
             raise ValueError(f"Task {task_id} was not found")
         await self._connection.hset(
@@ -68,7 +80,7 @@ class ValkeyBackend(JobBackend):
         )  # pyright: ignore[reportGeneralTypeIssues]
 
     async def get(self, task_id: UUID) -> TaskState | None:
-        data = await self._connection.hgetall(f"commander:task:{task_id}")  # pyright: ignore[reportGeneralTypeIssues]
+        data = await self._connection.hgetall(self._key("task", str(task_id)))  # pyright: ignore[reportGeneralTypeIssues]
         if not data:
             return None
 
@@ -97,9 +109,9 @@ class ValkeyBackend(JobBackend):
             next_run = next_run if next_run is not None else schedule
             schedule = OnceSchedule(run_at=next_run)
         async with self._connection.pipeline(transaction=True) as pipeline:
-            pipeline.zadd("commander:schedule", {str(schedule_id): next_run})
+            pipeline.zadd(self._key("schedule"), {str(schedule_id): next_run})
             pipeline.hset(
-                f"commander:schedule:{schedule_id}",
+                self._key("schedule", str(schedule_id)),
                 mapping={
                     "payload": payload.model_dump_json(),
                     "schedule": schedule.model_dump_json(),
@@ -110,13 +122,13 @@ class ValkeyBackend(JobBackend):
             await pipeline.execute()
 
     async def get_schedules(self) -> list[ScheduledTask]:
-        ids = await self._connection.zrange("commander:schedule", 0, -1)
+        ids = await self._connection.zrange(self._key("schedule"), 0, -1)
         tasks: list[ScheduledTask] = []
         for schedule_id in ids:
             raw_id = (
                 schedule_id.decode() if isinstance(schedule_id, bytes) else schedule_id
             )
-            scheduled = await self._connection.hgetall(f"commander:schedule:{raw_id}")
+            scheduled = await self._connection.hgetall(self._key("schedule", raw_id)) # pyright: ignore[reportGeneralTypeIssues]
             if not scheduled:
                 continue
             scheduled = {
@@ -140,11 +152,11 @@ class ValkeyBackend(JobBackend):
     async def update_schedule(self, task: ScheduledTask) -> None:
         async with self._connection.pipeline(transaction=True) as pipeline:
             pipeline.zadd(
-                "commander:schedule",
+                self._key("schedule"),
                 {str(task.id): task.next_run},
             )
             pipeline.hset(
-                f"commander:schedule:{task.id}",
+                self._key("schedule", str(task.id)),
                 mapping={
                     "payload": task.payload.model_dump_json(),
                     "schedule": task.schedule.model_dump_json(),
@@ -156,6 +168,15 @@ class ValkeyBackend(JobBackend):
 
     async def delete_schedule(self, schedule_id: UUID) -> None:
         async with self._connection.pipeline(transaction=True) as pipeline:
-            pipeline.zrem("commander:schedule", str(schedule_id))
-            pipeline.delete(f"commander:schedule:{schedule_id}")
+            pipeline.zrem(self._key("schedule"), str(schedule_id))
+            pipeline.delete(self._key("schedule", str(schedule_id)))
             await pipeline.execute()
+
+    async def close(self) -> None:
+        await self._connection.aclose()
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, exc_type, exc_value, traceback) -> None:
+        await self.close()

@@ -7,10 +7,11 @@ from commander.backends.sql import SqlBackend
 from commander.backends.valkey import ValkeyBackend
 from commander.baton import Baton
 from commander.queues.memory import MemoryQueue
+from commander.queues.rabbitmq import RabbitMQQueue
 from commander.runner import TasksRunner
 
-job_queue = MemoryQueue()
-backend = ValkeyBackend()
+job_queue = RabbitMQQueue(url="amqp://guest:guest@rabbitmq/")
+backend = ValkeyBackend(url="valkey://valkey")
 
 commander = Commander(job_queue, backend)
 runner = TasksRunner(job_queue, backend)
