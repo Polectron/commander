@@ -4,7 +4,7 @@ import asyncio
 import functools
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Literal
@@ -131,13 +131,18 @@ async def queue_task(
     return TaskHandler(task_id, backend)
 
 
-class Task:
-    def __init__(self, commander: Commander, fn) -> None:
+class Task[**P, R]:
+    def __init__(
+        self,
+        commander: Commander,
+        fn: Callable[P, Coroutine[Any, Any, R]],
+        retries: int
+    ) -> None:
         self._fn = fn
         self._commander = commander
         functools.update_wrapper(self, fn)
 
-    async def __call__(self, *args, **kwargs):
+    async def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return await self._fn(*args, **kwargs)
 
     async def schedule(
@@ -187,9 +192,9 @@ class Task:
             next_run,
         )
 
-    async def queue(self, *args, **kwargs) -> TaskHandler:
+    async def queue(self, *args: P.args, **kwargs: P.kwargs) -> TaskHandler:
         payload = TaskPayload(fn=self._fn, args=args, kwargs=kwargs)
         return await queue_task(self._commander.queue, self._commander.backend, payload)
 
-    async def run(self, *args, **kwargs):
+    async def run(self, *args: P.args, **kwargs: P.kwargs) -> R:
         return await self._fn(*args, **kwargs)

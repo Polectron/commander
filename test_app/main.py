@@ -3,6 +3,7 @@ import time
 from contextlib import suppress
 
 from commander import Commander
+from commander.backends.memory import MemoryBackend
 from commander.backends.sql import SqlBackend
 from commander.backends.valkey import ValkeyBackend
 from commander.baton import Baton
@@ -10,8 +11,11 @@ from commander.queues.memory import MemoryQueue
 from commander.queues.rabbitmq import RabbitMQQueue
 from commander.runner import TasksRunner
 
-job_queue = RabbitMQQueue(url="amqp://guest:guest@rabbitmq/")
-backend = ValkeyBackend(url="valkey://valkey")
+# job_queue = RabbitMQQueue(url="amqp://guest:guest@rabbitmq/")
+# backend = ValkeyBackend(url="valkey://valkey")
+
+job_queue = MemoryQueue()
+backend = MemoryBackend()
 
 commander = Commander(job_queue, backend)
 runner = TasksRunner(job_queue, backend)
